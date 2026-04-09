@@ -5,19 +5,16 @@ import java.util.List;
 
 abstract class Usuario {
     protected String nome; 
-
     public Usuario(String nome) {
         this.nome = nome;
     }
 
     public String getNome() { return nome; }
-
     public abstract void exibirDetalhes(); 
 }
 
 class Participante extends Usuario {
     private int pontuacao;
-
     public Participante(String nome) {
         super(nome);
         this.pontuacao = 0;
@@ -118,7 +115,6 @@ class Aposta {
 class GrupoApostas {
     private String nome;
     private List<Participante> participantes = new ArrayList<>();
-
     public GrupoApostas(String nome) { this.nome = nome; }
 
     public void adicionarParticipante(Participante p) {
