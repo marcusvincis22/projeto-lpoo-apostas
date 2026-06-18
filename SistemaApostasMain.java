@@ -1,14 +1,67 @@
+import java.sql.*;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 
-abstract class Usuario {
-    protected String nome; 
-    public Usuario(String nome) {
-        this.nome = nome;
+class GerenciadorBD {
+    private static final String URL = "jdbc:sqlite:campeonato_apostas.db";
+
+    public static Connection conectar() throws SQLException {
+        return DriverManager.getConnection(URL);
     }
 
+    public static void inicializarBanco() {
+        String sqlTimes = "CREATE TABLE IF NOT EXISTS times (nome TEXT PRIMARY KEY);";
+        String sqlParticipantes = "CREATE TABLE IF NOT EXISTS participantes (nome TEXT PRIMARY KEY, pontuacao INTEGER);";
+        
+        try (Connection conn = conectar(); Statement stmt = conn.createStatement()) {
+            stmt.execute(sqlTimes);
+            stmt.execute(sqlParticipantes);
+            System.out.println("[BD] Tabelas verificadas/criadas com sucesso.");
+        } catch (SQLException e) {
+            System.out.println("[BD] Erro ao inicializar tabelas: " + e.getMessage());
+        }
+    }
+
+    public static void salvarTime(String nome) {
+        String sql = "INSERT OR IGNORE INTO times(nome) VALUES(?)";
+        try (Connection conn = conectar(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, nome);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            System.out.println("[BD] Erro ao salvar time: " + e.getMessage());
+        }
+    }
+
+    public static void salvarParticipante(String nome, int pontuacao) {
+        String sql = "INSERT OR REPLACE INTO participantes(nome, pontuacao) VALUES(?, ?)";
+        try (Connection conn = conectar(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, nome);
+            pstmt.setInt(2, pontuacao);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            System.out.println("[BD] Erro ao salvar participante: " + e.getMessage());
+        }
+    }
+
+    public static List<String> listarTimes() {
+        List<String> lista = new ArrayList<>();
+        String sql = "SELECT nome FROM times";
+        try (Connection conn = conectar(); Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                lista.add(rs.getString("nome"));
+            }
+        } catch (SQLException e) {
+            System.out.println("[BD] Erro ao listar times: " + e.getMessage());
+        }
+        return lista;
+    }
+}
+
+abstract class Usuario {
+    protected String nome; 
+    public Usuario(String nome) { this.nome = nome; }
     public String getNome() { return nome; }
     public abstract void exibirDetalhes(); 
 }
@@ -21,7 +74,10 @@ class Participante extends Usuario {
     }
 
     public int getPontuacao() { return pontuacao; }
-    public void adicionarPontos(int pontos) { this.pontuacao += pontos; }
+    public void adicionarPoints(int pontos) { 
+        this.pontuacao += pontos; 
+        GerenciadorBD.salvarParticipante(this.nome, this.pontuacao);
+    }
 
     @Override
     public void exibirDetalhes() {
@@ -31,7 +87,10 @@ class Participante extends Usuario {
 
 class Time {
     private String nome;
-    public Time(String nome) { this.nome = nome; }
+    public Time(String nome) { 
+        this.nome = nome; 
+        GerenciadorBD.salvarTime(nome);
+    }
     public String getNome() { return nome; }
 }
 
@@ -44,6 +103,7 @@ class Partida {
     private boolean finalizada = false;
 
     public Partida(Time timeCasa, Time timeFora, LocalDateTime dataHorario) {
+        class Adicionar { }
         this.timeCasa = timeCasa;
         this.timeFora = timeFora;
         this.dataHorario = dataHorario;
@@ -78,10 +138,6 @@ class Aposta {
         this.dataAposta = LocalDateTime.now();
     }
 
-    public Aposta() {
-        this.dataAposta = LocalDateTime.now();
-    }
-
     public void calcularPontuacao() {
         if (!partida.isFinalizada()) return;
 
@@ -100,9 +156,9 @@ class Aposta {
                                    (realForaVenceu && apostaForaVenceu);
 
         if (acertouPlacarExato) {
-            participante.adicionarPontos(10); 
+            participante.adicionarPoints(10); 
         } else if (acertouResultado) {
-            participante.adicionarPontos(5); 
+            participante.adicionarPoints(5); 
         }
     }
 
@@ -120,6 +176,7 @@ class GrupoApostas {
     public void adicionarParticipante(Participante p) {
         if (participantes.size() < 5) { 
             participantes.add(p);
+            GerenciadorBD.salvarParticipante(p.getNome(), p.getPontuacao());
         } else {
             System.out.println("Grupo cheio! Máximo de 5 participantes.");
         }
@@ -136,8 +193,15 @@ class GrupoApostas {
 
 public class SistemaApostasMain {
     public static void main(String[] args) {
+        GerenciadorBD.inicializarBanco();
+
         Time arsenal = new Time("Arsenal");
         Time barcelona = new Time("Barcelona");
+
+        System.out.println("\n[BD] Times atualmente salvos no Banco de Dados:");
+        for(String nomeTime : GerenciadorBD.listarTimes()) {
+            System.out.println("- " + nomeTime);
+        }
 
         Partida jogo1 = new Partida(arsenal, barcelona, LocalDateTime.now().plusDays(1));
 
@@ -152,7 +216,7 @@ public class SistemaApostasMain {
         Aposta apostaJoao = new Aposta(p2, jogo1, 1, 0);   
 
         if(apostaMarcus.apostaValidaTempo() && apostaJoao.apostaValidaTempo()) {
-            System.out.println("Apostas registradas com sucesso!");
+            System.out.println("\nApostas registradas com sucesso!");
         }
 
         jogo1.setResultadoReal(2, 1);
